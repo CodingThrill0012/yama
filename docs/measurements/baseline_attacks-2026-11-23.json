@@ -1,0 +1,110 @@
+{
+  "benchmark": "baseline_attacks",
+  "exec_binary": "/tmp/yama-baseline-q46yvo8u/denied/true",
+  "landlock_abi_on_parent": 6,
+  "not_run": [
+    {
+      "profile": "container",
+      "status": "to be measured"
+    },
+    {
+      "profile": "gVisor",
+      "status": "to be measured"
+    }
+  ],
+  "notes": [
+    "A row is 'blocked' only if the syscall failed with EACCES or EPERM after Landlock or seccomp was applied.",
+    "Current yama.restrict.restrain() applies filesystem Landlock and PR_SET_NO_NEW_PRIVS; it does not install Landlock TCP rules or a seccomp filter unless those are requested and available.",
+    "Network blocking needs Landlock ABI >= 4 (TCP connect) or seccomp-BPF.",
+    "container and gVisor columns were not run."
+  ],
+  "results": [
+    {
+      "attack": "file_write_outside",
+      "child_wait_status": 0,
+      "denied_file_exists_after": true,
+      "landlock_applied": false,
+      "no_new_privs_applied": false,
+      "path": "/tmp/yama-baseline-q46yvo8u/denied/pwn.txt",
+      "profile": "plain",
+      "seccomp_applied": false,
+      "status": "allowed"
+    },
+    {
+      "attack": "file_write_outside",
+      "child_wait_status": 0,
+      "denied_file_exists_after": false,
+      "detail": "[Errno 13] Permission denied: '/tmp/yama-baseline-q46yvo8u/denied/pwn.txt'",
+      "errno": 13,
+      "landlock_abi": 6,
+      "landlock_applied": true,
+      "no_new_privs_applied": true,
+      "profile": "yama",
+      "restraint_report": "chroot: not requested \u2014 not requested\nno_new_privs: applied \u2014 PR_SET_NO_NEW_PRIVS=1\nlandlock: applied \u2014 ABI 6; 13 path rule(s)\nseccomp: not requested \u2014 no syscall list given\nprivilege_drop: not requested \u2014 not requested",
+      "seccomp_applied": false,
+      "status": "blocked"
+    },
+    {
+      "attack": "tcp_connect",
+      "child_wait_status": 0,
+      "denied_file_exists_after": false,
+      "landlock_applied": false,
+      "no_new_privs_applied": false,
+      "profile": "plain",
+      "seccomp_applied": false,
+      "status": "allowed",
+      "target": "1.1.1.1:443"
+    },
+    {
+      "attack": "tcp_connect",
+      "child_wait_status": 0,
+      "denied_file_exists_after": false,
+      "landlock_abi": 6,
+      "landlock_applied": true,
+      "no_new_privs_applied": true,
+      "profile": "yama",
+      "restraint_report": "chroot: not requested \u2014 not requested\nno_new_privs: applied \u2014 PR_SET_NO_NEW_PRIVS=1\nlandlock: applied \u2014 ABI 6; 13 path rule(s)\nseccomp: not requested \u2014 no syscall list given\nprivilege_drop: not requested \u2014 not requested",
+      "seccomp_applied": false,
+      "status": "allowed",
+      "target": "1.1.1.1:443"
+    },
+    {
+      "attack": "exec_binary",
+      "binary": "/tmp/yama-baseline-q46yvo8u/denied/true",
+      "child_exit": 0,
+      "denied_file_exists_after": false,
+      "profile": "plain",
+      "status": "allowed"
+    },
+    {
+      "attack": "exec_binary",
+      "child_wait_status": 0,
+      "denied_file_exists_after": false,
+      "detail": "[Errno 13] Permission denied",
+      "errno": 13,
+      "landlock_abi": 6,
+      "landlock_applied": true,
+      "no_new_privs_applied": true,
+      "profile": "yama",
+      "restraint_report": "chroot: not requested \u2014 not requested\nno_new_privs: applied \u2014 PR_SET_NO_NEW_PRIVS=1\nlandlock: applied \u2014 ABI 6; 13 path rule(s)\nseccomp: not requested \u2014 no syscall list given\nprivilege_drop: not requested \u2014 not requested",
+      "seccomp_applied": false,
+      "status": "blocked"
+    }
+  ],
+  "runtime_read_paths": [
+    "/workspace/yama/.venv",
+    "/usr",
+    "/usr/lib/python3.13",
+    "/workspace/yama/.venv/bin",
+    "/usr/bin",
+    "/usr/sbin",
+    "/usr/lib",
+    "/usr/lib64",
+    "/etc",
+    "/proc",
+    "/dev",
+    "/run"
+  ],
+  "tcp_target": "1.1.1.1:443",
+  "work_dir": "/tmp/yama-baseline-q46yvo8u"
+}

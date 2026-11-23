@@ -198,6 +198,30 @@ this script are recorded in
 [docs/YAMA-RESEARCH-NOTE.md](docs/YAMA-RESEARCH-NOTE.md)
 and [docs/measurements/remote_revocation-2026-11-23.json](docs/measurements/remote_revocation-2026-11-23.json).
 
+### Comparative baseline
+
+```bash
+python benchmarks/baseline_attacks.py
+```
+
+The script runs three attacks in a child process, once plain and once
+after `restrain()`: (a) a file write outside the allowed directory,
+(b) a new outbound TCP connection, (c) exec of a binary that is not in
+the allowed directory. Observed outcomes from one run on this box are
+recorded in [docs/YAMA-RESEARCH-NOTE.md](docs/YAMA-RESEARCH-NOTE.md)
+and [docs/measurements/baseline_attacks-2026-11-23.json](docs/measurements/baseline_attacks-2026-11-23.json).
+Container and gVisor columns are marked "to be measured". A result is
+recorded as blocked only when the syscall failed with `EACCES` or
+`EPERM` after Landlock or seccomp was applied.
+
+## Related work
+
+Commit-time re-validation is not claimed as a new idea. See Santos-Grueiro,
+*Temporary Authority, Permanent Effects: Commit-Time Authorization for
+LLM Agents*, arXiv:2607.10487, https://arxiv.org/abs/2607.10487
+(verified 23 Nov 2026). A slightly longer note is in the
+[research note](docs/YAMA-RESEARCH-NOTE.md#related-work).
+
 ## Security caveats
 
 Yama is a research prototype, not a complete sandbox and not a

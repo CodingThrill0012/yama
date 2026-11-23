@@ -122,3 +122,89 @@ values in the JSON file.
   returned.
 - Results are for this box, this Python, this delay, and this N. They
   should be re-measured before being cited for any other environment.
+
+## Comparative baseline
+
+This section records one run of `benchmarks/baseline_attacks.py` on this
+box. Only observed outcomes are reported. Container and gVisor
+comparisons were not run and are marked "to be measured". A row is
+called "blocked" only when the operation failed with `EACCES` or
+`EPERM` after Yama reported that Landlock was applied. Other failures
+would have been recorded as `failed-other` and are not treated as Yama
+blocks.
+
+### Setup
+
+- Script: `benchmarks/baseline_attacks.py`.
+- Profiles: `plain` (no restraints) and `yama` (`restrain()` with
+  `write_paths` / `read_paths` limited to an allowed directory,
+  `include_runtime_reads=True`, `PR_SET_NO_NEW_PRIVS`). The current
+  `restrain()` path applies filesystem Landlock when the kernel
+  supports it; it does not install Landlock TCP-connect rules or a
+  seccomp-BPF filter in this run (`seccomp_applied` was false in every
+  Yama child).
+- Attacks:
+  - (a) write `denied/pwn.txt` outside the allowed directory;
+  - (b) `socket.connect` to `1.1.1.1:443` (timeout 3 s);
+  - (c) `os.execv` of a copy of `/usr/bin/true` placed in the denied
+    directory (so the binary is not in the Landlock ruleset).
+- Raw output: `docs/measurements/baseline_attacks-2026-11-23.json`.
+
+### Box
+
+Same host as the remote-revocation run, measured 23 Nov 2026,
+8:08 AM Asia/Calcutta:
+
+- kernel: `6.12.113+`
+- architecture: `x86_64`
+- Python: `3.13.5`
+- Landlock ABI on the parent process: 6
+- CPU model (from `/proc/cpuinfo`): `Intel(R) Xeon(R) Processor`
+- `MemTotal`: `16386416` KiB
+- euid: `1000`
+
+### Observed outcomes
+
+| Attack | plain | Yama (`restrain()`, FS Landlock ABI 6) | container | gVisor |
+| --- | --- | --- | --- | --- |
+| (a) file write outside allowed directory | allowed (file created) | blocked (`errno=13` EACCES); `landlock_applied=True`; the denied file did not exist afterwards | to be measured | to be measured |
+| (b) new outbound TCP connection to 1.1.1.1:443 | allowed (connect succeeded) | allowed (connect succeeded); `landlock_applied=True`; `seccomp_applied=False` | to be measured | to be measured |
+| (c) exec of `denied/true` (copy of `/usr/bin/true`) | allowed (child exit 0) | blocked (`errno=13` EACCES); `landlock_applied=True` | to be measured | to be measured |
+
+Network blocking needs Landlock ABI >= 4 with TCP connect rules, or
+seccomp-BPF. This run used filesystem Landlock only, and the outbound
+connection was not blocked. That is an observed allowance, not a
+claim that Yama cannot be configured to block connect() in a later
+change.
+
+### Limitations
+
+- One run, this box, this kernel, this Python.
+- Container and gVisor were not measured.
+- The exec attack used a binary *outside* the allowed directory.
+  Exec of a runtime path that `include_runtime_reads=True` leaves
+  executable (for example `/usr/bin/true` itself) was not measured
+  in this run and must not be assumed blocked.
+- No seccomp bindings were installed, and no Landlock net rules were
+  applied.
+
+## Related work
+
+Yama is not the first statement of commit-time authorization, and this
+repository does not claim that commit-time re-validation is a new
+idea.
+
+Santos-Grueiro, Igor. *Temporary Authority, Permanent Effects:
+Commit-Time Authorization for LLM Agents*. arXiv:2607.10487 [cs.CR],
+https://arxiv.org/abs/2607.10487. First submitted 11 July 2026;
+version 2 dated 31 October 2026 (the record resolved as
+`2607.10487v2` when checked).
+
+The identifier was verified on 23 Nov 2026 by fetching
+`https://arxiv.org/abs/2607.10487` and the export.arxiv.org API
+(`https://export.arxiv.org/api/query?id_list=2607.10487`). Both
+returned that title, that author, primary category `cs.CR`, and an
+abstract about commit-time authorization of durable effects. No
+figures or tables from that paper are reproduced here as if they were
+measured in this repository, and this prototype is not a comparison
+against that work.
