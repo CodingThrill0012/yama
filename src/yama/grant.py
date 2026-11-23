@@ -72,7 +72,7 @@ def _validate_id(grant_id: str) -> str:
     return grant_id
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Grant:
     """An immutable authorization grant issued by a supervisor.
 

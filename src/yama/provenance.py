@@ -91,7 +91,7 @@ def _format_timestamp(value: datetime) -> str:
     return text
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Provenance:
     """Explicit provenance tag attached to a payload.
 
