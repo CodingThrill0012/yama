@@ -14,7 +14,9 @@ import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Optional, Union
+from typing import Any, Iterable, Iterator, Mapping, Optional, Union
+
+from yama.provenance import TrustLevel, parse_effect_min_trust
 
 _GRANT_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
@@ -77,10 +79,16 @@ class Grant:
     Attributes:
         id: Stable identifier used by the store and by workers.
         principal: Who the grant is issued to (worker name, agent id, ...).
-        purpose: Human-readable statement of why the grant exists.
+        purpose: Why the grant exists. At commit time this is compared
+            exactly to the payload's provenance.purpose_binding.
         allowed_effects: Names of effects this grant may authorize.
         expiry: UTC instant after which the grant is no longer valid.
         revoked: Set only via GrantStore.revoke; never by the worker.
+        min_trust_level: Grant-level floor for provenance.trust_level.
+            Default is TrustLevel.MEDIUM.
+        effect_min_trust: Optional per-effect thresholds. The required
+            trust for effect E is max(min_trust_level,
+            effect_min_trust[E] if set else UNTRUSTED).
     """
 
     id: str
@@ -89,6 +97,8 @@ class Grant:
     allowed_effects: frozenset[str]
     expiry: datetime
     revoked: bool = False
+    min_trust_level: TrustLevel = TrustLevel.MEDIUM
+    effect_min_trust: tuple[tuple[str, TrustLevel], ...] = ()
 
     def __post_init__(self) -> None:
         _validate_id(self.id)
@@ -102,6 +112,8 @@ class Grant:
         object.__setattr__(self, "allowed_effects", effects)
         object.__setattr__(self, "expiry", _require_aware_utc(self.expiry))
         object.__setattr__(self, "revoked", bool(self.revoked))
+        object.__setattr__(self, "min_trust_level", TrustLevel.parse(self.min_trust_level))
+        object.__setattr__(self, "effect_min_trust", parse_effect_min_trust(self.effect_min_trust))
 
     def is_valid(self, now: Optional[datetime] = None) -> bool:
         """Return True if the grant is not revoked and has not expired."""
@@ -115,6 +127,21 @@ class Grant:
         if not effect:
             return False
         return self.is_valid(now) and effect in self.allowed_effects
+
+    def required_trust(self, effect: str) -> TrustLevel:
+        """Return the minimum TrustLevel required to commit ``effect``.
+
+        This is the grant-level floor, raised to any per-effect threshold
+        configured for ``effect``. It does not depend on provenance; the
+        commit path compares the payload's asserted trust_level to this
+        value.
+        """
+        effect_level = TrustLevel.UNTRUSTED
+        for name, level in self.effect_min_trust:
+            if name == effect:
+                effect_level = level
+                break
+        return TrustLevel(max(self.min_trust_level, effect_level))
 
     def denial_reason(self, effect: Optional[str] = None, now: Optional[datetime] = None) -> Optional[str]:
         """Return a short reason if the grant cannot authorize, else None."""
@@ -135,6 +162,10 @@ class Grant:
             "allowed_effects": sorted(self.allowed_effects),
             "expiry": _format_expiry(self.expiry),
             "revoked": self.revoked,
+            "min_trust_level": self.min_trust_level.name.lower(),
+            "effect_min_trust": {
+                name: level.name.lower() for name, level in self.effect_min_trust
+            },
         }
 
     def to_json(self, *, indent: int = 2) -> str:
@@ -150,6 +181,8 @@ class Grant:
             expiry = data["expiry"]
         except KeyError as exc:
             raise GrantError(f"grant is missing field {exc.args[0]!r}") from exc
+        min_trust = data.get("min_trust_level", TrustLevel.MEDIUM)
+        effect_min = data.get("effect_min_trust", ())
         return cls(
             id=str(grant_id),
             principal=str(principal),
@@ -157,6 +190,8 @@ class Grant:
             allowed_effects=frozenset(effects),
             expiry=_parse_expiry(expiry),
             revoked=bool(data.get("revoked", False)),
+            min_trust_level=TrustLevel.parse(min_trust),
+            effect_min_trust=parse_effect_min_trust(effect_min),
         )
 
     @classmethod
@@ -178,10 +213,14 @@ def issue_grant(
     expiry: Optional[datetime] = None,
     ttl: Optional[timedelta] = None,
     grant_id: Optional[str] = None,
+    min_trust_level: Union[TrustLevel, str, int] = TrustLevel.MEDIUM,
+    effect_min_trust: Optional[Mapping[str, Union[TrustLevel, str, int]]] = None,
 ) -> Grant:
     """Issue a new, unrevoked grant.
 
     Provide either ``expiry`` (timezone-aware) or ``ttl`` relative to now.
+    ``min_trust_level`` defaults to MEDIUM. ``effect_min_trust`` may raise
+    the required trust for named effects; it cannot lower the grant floor.
     """
     if expiry is None:
         if ttl is None:
@@ -194,6 +233,8 @@ def issue_grant(
         allowed_effects=frozenset(allowed_effects),
         expiry=expiry,
         revoked=False,
+        min_trust_level=TrustLevel.parse(min_trust_level),
+        effect_min_trust=parse_effect_min_trust(effect_min_trust),
     )
 
 

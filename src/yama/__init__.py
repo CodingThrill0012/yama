@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from yama.commit import GrantDenied, atomic_write, commit_effect
+from yama.commit import GrantDenied, atomic_write, check_commit, check_effect, commit_effect
 from yama.grant import (
     Grant,
     GrantError,
@@ -11,6 +11,7 @@ from yama.grant import (
     GrantStoreError,
     issue_grant,
 )
+from yama.provenance import Provenance, ProvenanceError, TrustLevel
 from yama.restrict import (
     RestraintReport,
     apply_landlock,
@@ -31,11 +32,16 @@ __all__ = [
     "GrantNotFound",
     "GrantStore",
     "GrantStoreError",
+    "Provenance",
+    "ProvenanceError",
     "RestraintReport",
+    "TrustLevel",
     "__version__",
     "apply_landlock",
     "apply_seccomp",
     "atomic_write",
+    "check_commit",
+    "check_effect",
     "chroot_fallback",
     "commit_effect",
     "drop_privileges",

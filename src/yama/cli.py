@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from yama import __version__
-from yama.commit import GrantDenied, check_effect
+from yama.commit import GrantDenied, check_commit, check_effect, commit_effect
 from yama.grant import GrantError, GrantNotFound, GrantStore, issue_grant
+from yama.provenance import Provenance, ProvenanceError, TrustLevel
 from yama.restrict import doctor_lines, restrain
 
 
@@ -53,6 +54,42 @@ def _open_store(args: argparse.Namespace, *, readonly: bool) -> GrantStore:
     return GrantStore(_store_path(getattr(args, "store", None)), readonly=readonly)
 
 
+def _parse_trust(text: str) -> TrustLevel:
+    try:
+        return TrustLevel.parse(text)
+    except ProvenanceError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _parse_effect_min(text: str) -> tuple[str, TrustLevel]:
+    if "=" not in text:
+        raise argparse.ArgumentTypeError("use EFFECT=LEVEL, for example write_report=high")
+    effect, level = text.split("=", 1)
+    effect = effect.strip()
+    if not effect:
+        raise argparse.ArgumentTypeError("effect name is empty")
+    return effect, _parse_trust(level)
+
+
+def _provenance_from_args(args: argparse.Namespace) -> Provenance | None:
+    origin = getattr(args, "origin", None)
+    trust = getattr(args, "trust", None)
+    purpose_binding = getattr(args, "purpose_binding", None)
+    present = [item for item in (origin, trust, purpose_binding) if item is not None]
+    if not present:
+        return None
+    if origin is None or trust is None or purpose_binding is None:
+        raise GrantError(
+            "provenance requires all of --origin, --trust, and --purpose-binding"
+        )
+    return Provenance(
+        origin=origin,
+        trust_level=trust,
+        purpose_binding=purpose_binding,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
 def cmd_grant_create(args: argparse.Namespace) -> int:
     effects = [item.strip() for item in args.effects.split(",") if item.strip()]
     if not effects:
@@ -63,6 +100,7 @@ def cmd_grant_create(args: argparse.Namespace) -> int:
     if expiry is None and ttl is None:
         ttl = timedelta(hours=1)
     try:
+        effect_min = dict(getattr(args, "effect_min_trust", None) or [])
         grant = issue_grant(
             principal=args.principal,
             purpose=args.purpose,
@@ -70,6 +108,8 @@ def cmd_grant_create(args: argparse.Namespace) -> int:
             expiry=expiry,
             ttl=ttl,
             grant_id=args.id,
+            min_trust_level=getattr(args, "min_trust", TrustLevel.MEDIUM),
+            effect_min_trust=effect_min or None,
         )
         store = _open_store(args, readonly=False)
         store.put(grant)
@@ -122,6 +162,15 @@ def cmd_grant_list(args: argparse.Namespace) -> int:
 def cmd_check(args: argparse.Namespace) -> int:
     try:
         store = _open_store(args, readonly=True)
+        provenance = _provenance_from_args(args)
+        if args.effect and provenance is not None:
+            grant = check_commit(store, args.grant_id, args.effect, provenance)
+            print(
+                f"permitted: grant {grant.id} allows {args.effect!r} "
+                f"with purpose {grant.purpose!r} and required trust "
+                f"{grant.required_trust(args.effect).name.lower()}"
+            )
+            return 0
         if args.effect:
             grant = check_effect(store, args.grant_id, args.effect)
             print(f"permitted: grant {grant.id} allows {args.effect!r}")
@@ -136,9 +185,29 @@ def cmd_check(args: argparse.Namespace) -> int:
     except GrantDenied as exc:
         print(f"denied: {exc}", file=sys.stderr)
         return 1
-    except (GrantNotFound, GrantError) as exc:
+    except (GrantNotFound, GrantError, ProvenanceError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+
+
+def cmd_commit(args: argparse.Namespace) -> int:
+    try:
+        provenance = _provenance_from_args(args)
+        if provenance is None:
+            raise GrantError("commit requires --origin, --trust, and --purpose-binding")
+        data = args.data
+        if data is None:
+            data = sys.stdin.read()
+        store = _open_store(args, readonly=True)
+        commit_effect(store, args.grant_id, args.effect, args.path, data, provenance=provenance)
+    except GrantDenied as exc:
+        print(f"denied: {exc}", file=sys.stderr)
+        return 1
+    except (GrantError, ProvenanceError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"committed {args.effect!r} to {args.path}")
+    return 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -233,6 +302,20 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--expiry", type=_parse_expiry, help="UTC expiry, for example 2026-11-23T12:00:00Z")
     create.add_argument("--ttl", type=_parse_ttl, help="lifetime, for example 30m or 2h (default 1h)")
     create.add_argument("--id", help="optional grant id (default: a UUID)")
+    create.add_argument(
+        "--min-trust",
+        type=_parse_trust,
+        default=TrustLevel.MEDIUM,
+        help="grant-level minimum provenance trust (untrusted|low|medium|high; default medium)",
+    )
+    create.add_argument(
+        "--effect-min-trust",
+        action="append",
+        default=[],
+        type=_parse_effect_min,
+        metavar="EFFECT=LEVEL",
+        help="raise the required trust for one effect (repeatable)",
+    )
     create.set_defaults(func=cmd_grant_create)
 
     show = grant_sub.add_parser("show", parents=[store_flags], help="print one grant from the store")
@@ -249,7 +332,29 @@ def build_parser() -> argparse.ArgumentParser:
     check = sub.add_parser("check", parents=[store_flags], help="re-read a grant and test whether it is valid or permits an effect")
     check.add_argument("grant_id")
     check.add_argument("--effect", help="effect name to test")
+    check.add_argument("--origin", help="provenance origin (requires --trust and --purpose-binding)")
+    check.add_argument("--trust", type=_parse_trust, help="asserted provenance trust level")
+    check.add_argument("--purpose-binding", dest="purpose_binding", help="must match the grant purpose")
     check.set_defaults(func=cmd_check)
+
+    commit = sub.add_parser(
+        "commit",
+        parents=[store_flags],
+        help="re-check a grant and provenance, then atomically write a file",
+    )
+    commit.add_argument("grant_id")
+    commit.add_argument("--effect", required=True)
+    commit.add_argument("--path", required=True, help="destination file")
+    commit.add_argument("--data", help="payload text (default: read stdin)")
+    commit.add_argument("--origin", required=True, help="provenance origin")
+    commit.add_argument("--trust", type=_parse_trust, required=True, help="asserted provenance trust level")
+    commit.add_argument(
+        "--purpose-binding",
+        dest="purpose_binding",
+        required=True,
+        help="must match the grant purpose exactly",
+    )
+    commit.set_defaults(func=cmd_commit)
 
     run = sub.add_parser(
         "run",

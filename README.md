@@ -18,10 +18,11 @@ This project was formerly developed under the working name BEACON.
 ## What / Why / How
 
 **What.** A `Grant` names a principal, a purpose, a set of allowed
-effects, and an expiry. Grants are immutable. A supervisor-owned
-`GrantStore` is the only place a grant can be issued or revoked. Workers
-open the store read-only and call `commit_effect`, which re-reads the
-grant from the store immediately before an atomic write.
+effects, an expiry, and a minimum provenance trust level. Grants are
+immutable. A supervisor-owned `GrantStore` is the only place a grant can
+be issued or revoked. Workers open the store read-only and call
+`commit_effect` with a `Provenance` tag, which re-reads the grant from
+the store and checks purpose and trust immediately before an atomic write.
 
 **Why.** In a multi-agent system, a worker that was allowed to write a
 file a moment ago may have had that right revoked, or the grant may have
@@ -35,9 +36,10 @@ misbehaves.
 workers can read but should not be able to write (filesystem
 permissions, and Landlock write paths that exclude the store). A worker
 calls `restrain(...)` to apply any available kernel restraints, then
-`commit_effect(...)` for each protected write. If Landlock or seccomp is
-unavailable, Yama reports that clearly and does not pretend the
-restraint was applied.
+`commit_effect(...)` for each protected write, passing a `Provenance`
+tag whose `purpose_binding` equals the grant purpose. If Landlock or
+seccomp is unavailable, Yama reports that clearly and does not pretend
+the restraint was applied.
 
 ## Status
 
@@ -46,6 +48,31 @@ Research prototype based on the BEACON v0.6 controlled experiment.
 This repository is a clean, reusable implementation of the supervisor-owned
 grant and process-restraint design. It does not republish experimental
 measurements from BEACON.
+
+A longer record of the property, provenance rules, and later experiments
+is in [docs/YAMA-RESEARCH-NOTE.md](docs/YAMA-RESEARCH-NOTE.md).
+
+## Provenance and purpose binding
+
+`commit_effect` refuses a write unless the payload carries a `Provenance`
+tag (`origin`, `trust_level`, `purpose_binding`, `timestamp`) that is
+checked against the freshly loaded grant:
+
+- missing tag → `provenance_missing`
+- `purpose_binding` is not exactly `grant.purpose` → `purpose_mismatch`
+- `trust_level` is below the required minimum → `insufficient_trust`
+
+The required minimum for effect *E* is `grant.min_trust_level` (default
+`medium`), raised to `grant.effect_min_trust[E]` when that override is
+set. `TrustLevel` is the ordered enum `untrusted < low < medium < high`.
+A payload meets the threshold iff `provenance.trust_level >= required`.
+
+This closes the semantic-overclaim gap in the sense that authority can
+no longer be acquired by untagged, low-trust, or mis-purposed payloads.
+The Yama Property's caveat still stands: authorization alone does not
+provide semantic safety. Provenance tags are asserted metadata; Yama
+does not verify that the payload's content is truthful, nor that the
+stated origin is authentic.
 
 ## Installation
 
@@ -68,8 +95,11 @@ python -m pip install -e ".[dev]"
 ### Python API
 
 ```python
-from datetime import timedelta
-from yama import GrantStore, issue_grant, restrain, commit_effect, GrantDenied
+from datetime import datetime, timedelta, timezone
+from yama import (
+    GrantStore, issue_grant, restrain, commit_effect, GrantDenied,
+    Provenance, TrustLevel,
+)
 
 store = GrantStore("/var/lib/yama/grants")  # supervisor, writable
 grant = issue_grant(
@@ -77,6 +107,7 @@ grant = issue_grant(
     purpose="write the approved report",
     allowed_effects=["write_report"],
     ttl=timedelta(minutes=30),
+    min_trust_level=TrustLevel.MEDIUM,
 )
 store.put(grant)
 
@@ -88,8 +119,18 @@ report = restrain(
 )
 print(report)  # shows what was applied vs unavailable
 
+provenance = Provenance(
+    origin="writer-1",
+    trust_level=TrustLevel.HIGH,
+    purpose_binding=grant.purpose,
+    timestamp=datetime.now(timezone.utc),
+)
 try:
-    commit_effect(store, grant.id, "write_report", "/var/lib/yama/work/report.txt", "ok\n")
+    commit_effect(
+        store, grant.id, "write_report",
+        "/var/lib/yama/work/report.txt", "ok\n",
+        provenance=provenance,
+    )
 except GrantDenied as exc:
     print(f"write refused: {exc.reason}")
 ```
@@ -108,6 +149,14 @@ yama grant create \
 
 yama grant show GRANT_ID --store ./yama-grants
 yama check GRANT_ID --effect write_report --store ./yama-grants
+yama check GRANT_ID --effect write_report \
+  --origin writer-1 --trust high \
+  --purpose-binding "write the approved report" \
+  --store ./yama-grants
+yama commit GRANT_ID --effect write_report --path ./work/report.txt \
+  --data "ok" --origin writer-1 --trust high \
+  --purpose-binding "write the approved report" \
+  --store ./yama-grants
 
 yama run --grant GRANT_ID --effect write_report \
   --store ./yama-grants \

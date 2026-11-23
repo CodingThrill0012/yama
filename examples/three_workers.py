@@ -23,7 +23,7 @@ from __future__ import annotations
 import os
 import sys
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +33,7 @@ if (SRC / "yama").is_dir() and str(SRC) not in sys.path:
 
 from yama.commit import GrantDenied, commit_effect  # noqa: E402
 from yama.grant import GrantStore, GrantStoreError, issue_grant  # noqa: E402
+from yama.provenance import Provenance, TrustLevel  # noqa: E402
 from yama.restrict import restrain  # noqa: E402
 
 
@@ -80,6 +81,13 @@ def worker_main(role: str, store_dir: Path, work_dir: Path, grant_id: str) -> in
 
     def attempt(phase: str, effect: str, filename: str) -> None:
         dest = out / filename
+        grant = store.get(grant_id)
+        provenance = Provenance(
+            origin=role,
+            trust_level=TrustLevel.HIGH,
+            purpose_binding=grant.purpose,
+            timestamp=datetime.now(timezone.utc),
+        )
         try:
             commit_effect(
                 store,
@@ -87,6 +95,7 @@ def worker_main(role: str, store_dir: Path, work_dir: Path, grant_id: str) -> in
                 effect,
                 dest,
                 f"{role} {phase} {effect}\n",
+                provenance=provenance,
             )
             lines.append(f"{role}: {phase} {effect} ALLOWED -> {dest.name}")
         except GrantDenied as exc:

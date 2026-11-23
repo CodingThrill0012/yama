@@ -1,20 +1,31 @@
-"""Guarded commits: re-check a supervisor grant immediately before a write."""
+"""Guarded commits: re-check a supervisor grant and provenance immediately before a write."""
 
 from __future__ import annotations
 
 import os
 import tempfile
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 from yama.grant import Grant, GrantError, GrantNotFound, GrantStore
+from yama.provenance import Provenance
 
 PathLike = Union[str, Path]
 Data = Union[str, bytes]
 
 
 class GrantDenied(Exception):
-    """The grant is missing, invalid, or does not permit the effect."""
+    """The grant is missing, invalid, or the payload is not committable.
+
+    Distinct ``reason`` codes (stable strings, compared in tests):
+
+    - ``not_found``, ``store_error``, ``revoked``, ``expired``,
+      ``effect_not_allowed`` — grant / effect checks.
+    - ``provenance_missing`` — no provenance tag was supplied.
+    - ``purpose_mismatch`` — ``provenance.purpose_binding != grant.purpose``.
+    - ``insufficient_trust`` — ``provenance.trust_level`` is below
+      ``grant.required_trust(effect)``.
+    """
 
     def __init__(
         self,
@@ -70,7 +81,9 @@ def _fresh_grant(store: GrantStore, grant_id: str) -> Grant:
 def check_effect(store: GrantStore, grant_id: str, effect: str) -> Grant:
     """Re-read the grant from the supervisor store and require ``effect``.
 
-    Returns the freshly loaded Grant if it permits the effect.
+    Returns the freshly loaded Grant if it permits the effect. This does
+    not inspect provenance; use ``check_commit`` (or ``commit_effect``)
+    before writing a payload.
     """
     grant = _fresh_grant(store, grant_id)
     if grant.permits(effect):
@@ -84,19 +97,63 @@ def check_effect(store: GrantStore, grant_id: str, effect: str) -> Grant:
     )
 
 
+def check_commit(
+    store: GrantStore,
+    grant_id: str,
+    effect: str,
+    provenance: Optional[Provenance],
+) -> Grant:
+    """Re-read the grant and refuse if the payload cannot be committed.
+
+    Order of checks: grant presence and validity, allowed effect,
+    provenance present, purpose_binding equals grant.purpose, trust_level
+    meets grant.required_trust(effect).
+    """
+    grant = check_effect(store, grant_id, effect)
+    if provenance is None:
+        raise GrantDenied(
+            f"grant {grant_id} cannot commit {effect!r}: provenance is missing",
+            grant_id=grant_id,
+            effect=effect,
+            reason="provenance_missing",
+        )
+    if provenance.purpose_binding != grant.purpose:
+        raise GrantDenied(
+            f"grant {grant_id} cannot commit {effect!r}: purpose_binding "
+            f"{provenance.purpose_binding!r} does not match grant purpose "
+            f"{grant.purpose!r}",
+            grant_id=grant_id,
+            effect=effect,
+            reason="purpose_mismatch",
+        )
+    required = grant.required_trust(effect)
+    if provenance.trust_level < required:
+        raise GrantDenied(
+            f"grant {grant_id} cannot commit {effect!r}: trust_level "
+            f"{provenance.trust_level.name.lower()} is below required "
+            f"{required.name.lower()}",
+            grant_id=grant_id,
+            effect=effect,
+            reason="insufficient_trust",
+        )
+    return grant
+
+
 def commit_effect(
     store: GrantStore,
     grant_id: str,
     effect: str,
     path: PathLike,
     data: Data,
+    provenance: Optional[Provenance] = None,
 ) -> Grant:
-    """Re-check the grant immediately before writing a protected effect.
+    """Re-check the grant and provenance immediately before a protected write.
 
-    The grant is loaded from the supervisor store at the last moment, then
-    the bytes are written atomically. A revoked, expired, or too-narrow
-    grant raises GrantDenied and no file is published.
+    The grant is loaded from the supervisor store at the last moment.
+    A revoked, expired, or too-narrow grant, a missing provenance tag,
+    a purpose mismatch, or insufficient trust raises GrantDenied and no
+    file is published.
     """
-    grant = check_effect(store, grant_id, effect)
+    grant = check_commit(store, grant_id, effect, provenance)
     atomic_write(path, data)
     return grant
