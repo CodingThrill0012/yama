@@ -184,6 +184,20 @@ attempts commits. The example is designed to run unprivileged on a
 normal Linux box and to continue if Landlock or seccomp-BPF is
 unavailable.
 
+### Remote revocation example
+
+```bash
+python examples/remote_revocation.py --trials 50 --delay 0.05
+```
+
+A localhost HTTP supervisor issues a grant; the worker obtains it,
+waits, and re-checks at commit time. The treatment condition revokes the
+grant during the wait; the control condition does not. Measured refusal
+rates, re-check latency, and the post-check write window from a run of
+this script are recorded in
+[docs/YAMA-RESEARCH-NOTE.md](docs/YAMA-RESEARCH-NOTE.md)
+and [docs/measurements/remote_revocation-2026-11-23.json](docs/measurements/remote_revocation-2026-11-23.json).
+
 ## Security caveats
 
 Yama is a research prototype, not a complete sandbox and not a

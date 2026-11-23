@@ -1,0 +1,65 @@
+{
+  "box": {
+    "architecture": "x86_64",
+    "cpu_model": "Intel(R) Xeon(R) Processor",
+    "euid": 1000,
+    "kernel": "6.12.113+",
+    "mem_total_kib": 16386416,
+    "platform": "linux",
+    "python": "3.13.5"
+  },
+  "control": {
+    "allow_rate": 1.0,
+    "allowed": 50,
+    "n": 50,
+    "recheck_latency_s": {
+      "max": 0.0016578659999595402,
+      "median": 0.0012513254999930723,
+      "min": 0.0008903299999474257,
+      "n": 50,
+      "p95": 0.0015595268000083706
+    },
+    "refused": 0,
+    "toctou_window_s": {
+      "max": 0.002448698000080185,
+      "median": 0.00149796549999337,
+      "min": 0.0006800599999223778,
+      "n": 50,
+      "p95": 0.0021435143500184496
+    }
+  },
+  "delay_s": 0.05,
+  "elapsed_s": 5.519158554999876,
+  "experiment": "remote_revocation",
+  "limitations": [
+    "localhost only; no network partition, loss, or WAN delay was introduced",
+    "the HTTP supervisor is an unauthenticated measurement fixture",
+    "a TOCTOU window remains between a successful re-check and a durable write"
+  ],
+  "supervisor": "HTTP on 127.0.0.1 (ephemeral port)",
+  "treatment": {
+    "allowed": 0,
+    "n": 50,
+    "reason_counts": {
+      "revoked": 50
+    },
+    "recheck_latency_s": {
+      "max": 0.0019698490000337188,
+      "median": 0.0012699344998736706,
+      "min": 0.0010108659998877556,
+      "n": 50,
+      "p95": 0.0017454551500236447
+    },
+    "refusal_rate": 1.0,
+    "refused": 50,
+    "revoke_to_refuse_s": {
+      "max": 0.052094619999934366,
+      "median": 0.05140163700002631,
+      "min": 0.051151311000012356,
+      "n": 50,
+      "p95": 0.0518499819499425
+    }
+  },
+  "trials_per_condition": 50,
+  "work_dir": "/tmp/yama-remote-revocation-6mur5n70"
+}
