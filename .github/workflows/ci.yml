@@ -7,11 +7,19 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Python 3.9 is not published for Ubuntu 26.04 (ubuntu-latest as of
+    # this workflow). Keep 3.9 coverage on ubuntu-24.04.
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.12", "3.13"]
+        include:
+          - python-version: "3.9"
+            os: ubuntu-24.04
+          - python-version: "3.12"
+            os: ubuntu-latest
+          - python-version: "3.13"
+            os: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

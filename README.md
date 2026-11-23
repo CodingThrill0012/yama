@@ -2,6 +2,10 @@
 
 Supervisor-owned authorization and process restraint for multi-agent systems.
 
+## The Yama Property
+
+Yama is a system-independent control property for multi-agent systems: every protected side-effect must be authorized by a supervisor that does not execute the agent’s code; that authorization must be re-validated immediately before the effect is committed; the agent itself must be incapable of producing the protected side-effect; and every payload that crosses an agent or supervisor boundary must carry an explicit provenance tag such that untagged or insufficiently trusted content cannot acquire new authority. Authorization alone does not provide semantic safety.
+
 Yama is a small Python utility for systems in which a supervisor issues
 short-lived grants to worker processes (agents), and those workers must
 re-check the grant immediately before committing a protected effect.
