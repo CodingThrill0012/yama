@@ -214,6 +214,10 @@ Container and gVisor columns are marked "to be measured". A result is
 recorded as blocked only when the syscall failed with `EACCES` or
 `EPERM` after Landlock or seccomp was applied.
 
+## Use cases
+
+- [Banking: supervisor-owned commit control for AI-assisted payment and servicing workflows](docs/usecases/banking.md) (illustrative scenario, not a deployed bank system).
+
 ## Related work
 
 Commit-time re-validation is not claimed as a new idea. See Santos-Grueiro,
