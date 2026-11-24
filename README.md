@@ -6,6 +6,12 @@ Supervisor-owned authorization and process restraint for multi-agent systems.
 
 Yama is a system-independent control property for multi-agent systems: every protected side-effect must be authorized by a supervisor that does not execute the agent’s code; that authorization must be re-validated immediately before the effect is committed; the agent itself must be incapable of producing the protected side-effect; and every payload that crosses an agent or supervisor boundary must carry an explicit provenance tag such that untagged or insufficiently trusted content cannot acquire new authority. Authorization alone does not provide semantic safety.
 
+## Intent
+
+Yama is intentionally a small, integrable control-plane utility, not a complete banking or agent platform. It exists so that larger products can enforce supervisor-owned commit control, process restraint, and provenance binding on protected effects without rebuilding those mechanisms. The project is released as freeware under the MIT license so that any system can adopt, audit, or extend the control plane while keeping its own business logic, sinks, and user experience.
+
+A short note on calling Yama from a larger product is in [INTEGRATION.md](INTEGRATION.md).
+
 ## Security model
 
 A short write-up of why the property exists, the four conditions, and open research questions is in [docs/security-model.md](docs/security-model.md).
@@ -18,6 +24,12 @@ Landlock, seccomp-BPF, `PR_SET_NO_NEW_PRIVS`, an optional privilege drop,
 and an optional chroot fallback.
 
 This project was formerly developed under the working name BEACON.
+
+## Related work & differentiation
+
+Related work has established that authority valid earlier in an agent’s execution can become stale before a durable effect is committed (Santos-Grueiro, [arXiv:2607.10487](https://arxiv.org/abs/2607.10487)). Maker-checker systems and several agent control planes enforce segregation of duties, approval gates, or policy checks before tool execution. Yama differs by packaging a single, system-independent property as a small integrable control-plane utility: a supervisor that does not execute agent code must re-validate a purpose-bound grant immediately before any protected effect is committed; the agent itself must be incapable of producing that effect; and every cross-boundary payload must carry provenance such that untagged or wrong-purpose content cannot acquire new authority. The Linux reference implementation supplies measured evidence for these conditions and states residual risks openly. No existing freeware utility currently offers this exact combination as a lightweight component that larger products can call.
+
+The paper is *Temporary Authority, Permanent Effects: Commit-Time Authorization for LLM Agents* (verified 23 Nov 2026). A slightly longer note is in the [research note](docs/YAMA-RESEARCH-NOTE.md#related-work).
 
 ## What / Why / How
 
@@ -221,14 +233,6 @@ recorded as blocked only when the syscall failed with `EACCES` or
 ## Use cases
 
 - [Banking: supervisor-owned commit control for AI-assisted payment and servicing workflows](docs/usecases/banking.md) (illustrative scenario, not a deployed bank system).
-
-## Related work
-
-Commit-time re-validation is not claimed as a new idea. See Santos-Grueiro,
-*Temporary Authority, Permanent Effects: Commit-Time Authorization for
-LLM Agents*, arXiv:2607.10487, https://arxiv.org/abs/2607.10487
-(verified 23 Nov 2026). A slightly longer note is in the
-[research note](docs/YAMA-RESEARCH-NOTE.md#related-work).
 
 ## Security caveats
 
