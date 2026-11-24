@@ -233,6 +233,7 @@ recorded as blocked only when the syscall failed with `EACCES` or
 ## Use cases
 
 - [Banking: supervisor-owned commit control for AI-assisted payment and servicing workflows](docs/usecases/banking.md) (illustrative scenario, not a deployed bank system).
+- [OT: supervisor-owned commit control for protected changes in operational technology environments](docs/usecases/ot.md) (illustrative scenario, not IEC 62443 or SIL).
 
 ## Security caveats
 
